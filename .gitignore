@@ -1,0 +1,24 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+localstack_providers_override.tf
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Generated reports
+report.json
+report.md
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
