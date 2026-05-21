@@ -30,7 +30,7 @@ pip install terraform-local
 **Clone the repository:**
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/RanvirxD/DevOps-Assignment
 cd devops-cost-assingment
 ```
 

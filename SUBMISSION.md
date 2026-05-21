@@ -19,13 +19,6 @@
 
 ---
 
-## Walkthrough Video
-
-Link (Loom / YouTube unlisted / Google Drive):
-Length: max 5 minutes
-
----
-
 ## Sample Report
 
 Path to a sample `report.json` produced by the script:
