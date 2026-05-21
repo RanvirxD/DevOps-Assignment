@@ -31,7 +31,7 @@ pip install terraform-local
 
 ```bash
 git clone https://github.com/RanvirxD/DevOps-Assignment
-cd devops-cost-assingment
+cd DevOps-Assignment
 ```
 
 **Start LocalStack:**
