@@ -1,5 +1,5 @@
 {
-  "scan_timestamp": "2026-05-21T19:38:28Z",
+  "scan_timestamp": "2026-05-23T23:35:52Z",
   "account_id": "000000000000",
   "region": "us-east-1",
   "summary": {
@@ -8,7 +8,7 @@
   },
   "findings": [
     {
-      "resource_id": "vol-366dca93",
+      "resource_id": "vol-7a317cec",
       "resource_type": "ebs_volume",
       "reason": "unattached",
       "age_days": 0,
@@ -19,10 +19,10 @@
         "Owner": "devops-team"
       },
       "suggested_action": "delete",
-      "safe_to_auto_delete": false
+      "safe_to_auto_delete": true
     },
     {
-      "resource_id": "vol-2dd6299e",
+      "resource_id": "vol-bb081c60",
       "resource_type": "ebs_volume",
       "reason": "missing_tags:Project,Environment,Owner",
       "age_days": 0,
@@ -36,7 +36,7 @@
       "safe_to_auto_delete": false
     },
     {
-      "resource_id": "vol-4d3bb98c",
+      "resource_id": "vol-ce93fe3d",
       "resource_type": "ebs_volume",
       "reason": "missing_tags:Project,Environment,Owner",
       "age_days": 0,

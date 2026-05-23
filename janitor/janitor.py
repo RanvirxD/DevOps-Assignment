@@ -38,6 +38,7 @@ def get_ec2_client(region):
 def tag_list_to_dict(tags):
     if not tags:
         return {}
+
     return {tag.get("Key"): tag.get("Value") for tag in tags}
 
 
@@ -47,6 +48,15 @@ def is_protected(tags):
 
 def missing_required_tags(tags):
     return [key for key in REQUIRED_TAGS if not tags.get(key)]
+
+
+def report_tags(tags):
+    result = {key: tags.get(key) for key in REQUIRED_TAGS}
+
+    if "Protected" in tags:
+        result["Protected"] = tags.get("Protected")
+
+    return result
 
 
 def volume_monthly_cost(volume):
@@ -114,9 +124,9 @@ def find_unattached_ebs_volumes(ec2):
                 reason="unattached",
                 age_days=age_days,
                 estimated_monthly_cost_usd=volume_monthly_cost(volume),
-                tags={key: tags.get(key) for key in REQUIRED_TAGS},
+                tags=report_tags(tags),
                 suggested_action="delete",
-                safe_to_auto_delete=False,
+                safe_to_auto_delete=True,
             )
         )
 
@@ -151,7 +161,7 @@ def find_stopped_instances(ec2, stopped_days):
                     reason=f"stopped_more_than_{stopped_days}_days",
                     age_days=age_days,
                     estimated_monthly_cost_usd=PRICING["stopped_t3_micro_month"],
-                    tags={key: tags.get(key) for key in REQUIRED_TAGS},
+                    tags=report_tags(tags),
                     suggested_action="terminate",
                     safe_to_auto_delete=False,
                 )
@@ -179,9 +189,9 @@ def find_unused_elastic_ips(ec2):
                 reason="unused",
                 age_days=0,
                 estimated_monthly_cost_usd=PRICING["elastic_ip_month"],
-                tags={key: tags.get(key) for key in REQUIRED_TAGS},
+                tags=report_tags(tags),
                 suggested_action="release",
-                safe_to_auto_delete=False,
+                safe_to_auto_delete=True,
             )
         )
 
@@ -190,17 +200,14 @@ def find_unused_elastic_ips(ec2):
 
 def find_missing_tags(ec2):
     findings = []
-
     findings.extend(find_missing_tags_on_instances(ec2))
     findings.extend(find_missing_tags_on_volumes(ec2))
     findings.extend(find_missing_tags_on_elastic_ips(ec2))
-
     return findings
 
 
 def find_missing_tags_on_instances(ec2):
     findings = []
-
     response = ec2.describe_instances()
 
     for reservation in response.get("Reservations", []):
@@ -218,7 +225,7 @@ def find_missing_tags_on_instances(ec2):
                     reason=f"missing_tags:{','.join(missing)}",
                     age_days=calculate_age_days(instance.get("LaunchTime")),
                     estimated_monthly_cost_usd=0.00,
-                    tags={key: tags.get(key) for key in REQUIRED_TAGS},
+                    tags=report_tags(tags),
                     suggested_action="add_required_tags",
                     safe_to_auto_delete=False,
                 )
@@ -229,7 +236,6 @@ def find_missing_tags_on_instances(ec2):
 
 def find_missing_tags_on_volumes(ec2):
     findings = []
-
     response = ec2.describe_volumes()
 
     for volume in response.get("Volumes", []):
@@ -246,7 +252,7 @@ def find_missing_tags_on_volumes(ec2):
                 reason=f"missing_tags:{','.join(missing)}",
                 age_days=calculate_age_days(volume.get("CreateTime")),
                 estimated_monthly_cost_usd=0.00,
-                tags={key: tags.get(key) for key in REQUIRED_TAGS},
+                tags=report_tags(tags),
                 suggested_action="add_required_tags",
                 safe_to_auto_delete=False,
             )
@@ -257,7 +263,6 @@ def find_missing_tags_on_volumes(ec2):
 
 def find_missing_tags_on_elastic_ips(ec2):
     findings = []
-
     response = ec2.describe_addresses()
 
     for address in response.get("Addresses", []):
@@ -276,7 +281,7 @@ def find_missing_tags_on_elastic_ips(ec2):
                 reason=f"missing_tags:{','.join(missing)}",
                 age_days=0,
                 estimated_monthly_cost_usd=0.00,
-                tags={key: tags.get(key) for key in REQUIRED_TAGS},
+                tags=report_tags(tags),
                 suggested_action="add_required_tags",
                 safe_to_auto_delete=False,
             )
@@ -291,19 +296,27 @@ def delete_findings(ec2, findings):
 
     for finding in findings:
         tags = finding.get("tags", {})
+        resource_id = finding["resource_id"]
+        resource_type = finding["resource_type"]
+        action = finding["suggested_action"]
 
         if is_protected(tags):
             skipped.append(
                 {
-                    "resource_id": finding["resource_id"],
+                    "resource_id": resource_id,
                     "reason": "Protected=true",
                 }
             )
             continue
 
-        resource_type = finding["resource_type"]
-        action = finding["suggested_action"]
-        resource_id = finding["resource_id"]
+        if not finding.get("safe_to_auto_delete", False):
+            skipped.append(
+                {
+                    "resource_id": resource_id,
+                    "reason": "safe_to_auto_delete=false",
+                }
+            )
+            continue
 
         try:
             if resource_type == "ebs_volume" and action == "delete":
@@ -318,6 +331,14 @@ def delete_findings(ec2, findings):
                 ec2.terminate_instances(InstanceIds=[resource_id])
                 deleted.append(resource_id)
 
+            else:
+                skipped.append(
+                    {
+                        "resource_id": resource_id,
+                        "reason": "no_delete_action_for_finding",
+                    }
+                )
+
         except Exception as exc:
             skipped.append(
                 {
@@ -327,43 +348,6 @@ def delete_findings(ec2, findings):
             )
 
     return deleted, skipped
-
-
-def write_json_report(report, output_path):
-    Path(output_path).write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
-
-
-def write_markdown_report(report, output_path):
-    lines = []
-
-    lines.append("# Cost Janitor Report")
-    lines.append("")
-    lines.append(f"Scan timestamp: `{report['scan_timestamp']}`")
-    lines.append(f"Region: `{report['region']}`")
-    lines.append(f"Total findings: `{report['summary']['total_orphans']}`")
-    lines.append(
-        f"Estimated monthly waste: `${report['summary']['estimated_monthly_waste_usd']}`"
-    )
-    lines.append("")
-
-    if not report["findings"]:
-        lines.append("No orphaned or non-compliant resources were found.")
-    else:
-        lines.append("| Resource ID | Type | Reason | Age Days | Cost | Suggested Action |")
-        lines.append("|---|---|---|---:|---:|---|")
-
-        for finding in report["findings"]:
-            lines.append(
-                f"| {finding['resource_id']} "
-                f"| {finding['resource_type']} "
-                f"| {finding['reason']} "
-                f"| {finding['age_days']} "
-                f"| ${finding['estimated_monthly_cost_usd']} "
-                f"| {finding['suggested_action']} |"
-            )
-
-    lines.append("")
-    Path(output_path).write_text("\n".join(lines), encoding="utf-8")
 
 
 def build_report(region, findings):
@@ -383,6 +367,62 @@ def build_report(region, findings):
     }
 
 
+def write_json_report(report, output_path):
+    Path(output_path).write_text(
+        json.dumps(report, indent=2, default=str),
+        encoding="utf-8",
+    )
+
+
+def write_markdown_report(report, output_path):
+    lines = []
+
+    lines.append("# Cost Janitor Report")
+    lines.append("")
+    lines.append(f"Scan timestamp: `{report['scan_timestamp']}`")
+    lines.append(f"Region: `{report['region']}`")
+    lines.append(f"Total findings: `{report['summary']['total_orphans']}`")
+    lines.append(
+        f"Estimated monthly waste: `${report['summary']['estimated_monthly_waste_usd']}`"
+    )
+    lines.append("")
+
+    if not report["findings"]:
+        lines.append("No orphaned or non-compliant resources were found.")
+    else:
+        lines.append("| Resource ID | Type | Reason | Age Days | Cost | Suggested Action | Auto Delete |")
+        lines.append("|---|---|---|---:|---:|---|---|")
+
+        for finding in report["findings"]:
+            lines.append(
+                f"| {finding['resource_id']} "
+                f"| {finding['resource_type']} "
+                f"| {finding['reason']} "
+                f"| {finding['age_days']} "
+                f"| ${finding['estimated_monthly_cost_usd']} "
+                f"| {finding['suggested_action']} "
+                f"| {finding['safe_to_auto_delete']} |"
+            )
+
+    if "delete_summary" in report:
+        lines.append("")
+        lines.append("## Delete Summary")
+        lines.append("")
+        lines.append(f"Deleted resources: `{len(report['delete_summary']['deleted'])}`")
+        lines.append(f"Skipped resources: `{len(report['delete_summary']['skipped'])}`")
+
+        if report["delete_summary"]["skipped"]:
+            lines.append("")
+            lines.append("| Resource ID | Reason |")
+            lines.append("|---|---|")
+
+            for item in report["delete_summary"]["skipped"]:
+                lines.append(f"| {item['resource_id']} | {item['reason']} |")
+
+    lines.append("")
+    Path(output_path).write_text("\n".join(lines), encoding="utf-8")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="NimbusKart Cost Janitor")
 
@@ -390,7 +430,6 @@ def parse_args():
     mode.add_argument(
         "--dry-run",
         action="store_true",
-        default=True,
         help="Scan and report only. This is the default mode.",
     )
     mode.add_argument(
@@ -434,15 +473,10 @@ def main():
     findings.extend(find_unused_elastic_ips(ec2))
     findings.extend(find_missing_tags(ec2))
 
-    deleted = []
-    skipped = []
-
-    if args.delete:
-        deleted, skipped = delete_findings(ec2, findings)
-
     report = build_report(args.region, findings)
 
     if args.delete:
+        deleted, skipped = delete_findings(ec2, findings)
         report["delete_summary"] = {
             "deleted": deleted,
             "skipped": skipped,
@@ -455,6 +489,10 @@ def main():
     print(f"Markdown report written to {args.md_output}")
     print(f"Findings: {report['summary']['total_orphans']}")
 
+    if args.delete:
+        print(f"Deleted: {len(report['delete_summary']['deleted'])}")
+        print(f"Skipped: {len(report['delete_summary']['skipped'])}")
+
     if not args.delete and report["summary"]["total_orphans"] > 0:
         return 1
 
@@ -463,3 +501,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+    

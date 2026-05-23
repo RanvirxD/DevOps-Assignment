@@ -2,8 +2,8 @@
 
 **Candidate name:** Ranvir Singh
 **Email:** ranvirsingh.15h@gmail.com
-**Date:** 21-05-2026 
-**Hours spent (approximate):** 1hr
+**Date:** 24-05-2026 
+**Hours spent (approximate):** 2hr
 
 ---
 
@@ -12,8 +12,8 @@
 - [x] Part A: Terraform code under `/terraform` applies cleanly on LocalStack
 - [x] Part A: `terraform validate` and `terraform fmt -check` both pass
 - [x] Part B: Janitor script runs in `--dry-run` mode and produces `report.json`
-- [ ] Part B: GitHub Actions workflow runs green on a fresh PR
-- [ ] Part B: `--delete` mode respects `Protected=true` tag
+- [x] Part B: GitHub Actions workflow runs green on a fresh PR
+- [x] Part B: `--delete` mode respects `Protected=true` tag
 - [ ] Part C: `DESIGN.md` is present and within 2 pages
 - [ ] Walkthrough video link below is accessible (unlisted is fine)
 
