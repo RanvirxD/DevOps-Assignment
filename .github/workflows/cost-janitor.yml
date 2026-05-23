@@ -16,31 +16,53 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      localstack:
-        image: localstack/localstack:3.8.1
-        ports:
-          - 4566:4566
-        env:
-          SERVICES: ec2,s3
-          DEFAULT_REGION: us-east-1
+  localstack:
+    image: localstack/localstack:3.8.1
+    ports:
+      - 4566:4566
+    env:
+      SERVICES: ec2,s3
+      DEFAULT_REGION: us-east-1
+      DEBUG: 1
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Wait for LocalStack
-        run: |
-          for i in {1..30}; do
-            if curl -s http://localhost:4566/_localstack/health | grep -q "running"; then
-              echo "LocalStack is ready"
-              exit 0
-            fi
-            echo "Waiting for LocalStack..."
-            sleep 2
-          done
+  run: |
+    python - <<'PY'
+    import json
+    import time
+    import urllib.request
 
-          echo "LocalStack did not become ready in time"
-          exit 1
+    url = "http://localhost:4566/_localstack/health"
+
+    for attempt in range(1, 61):
+        try:
+            with urllib.request.urlopen(url, timeout=5) as response:
+                body = response.read().decode("utf-8")
+                print(body)
+
+                if response.status == 200:
+                    data = json.loads(body)
+                    services = data.get("services", {})
+
+                    ec2_status = services.get("ec2")
+                    s3_status = services.get("s3")
+
+                    if ec2_status in ("available", "running") and s3_status in ("available", "running"):
+                        print("LocalStack is ready")
+                        raise SystemExit(0)
+
+        except Exception as error:
+            print(f"Waiting for LocalStack... attempt {attempt}/60: {error}")
+
+        time.sleep(2)
+
+    print("LocalStack did not become ready in time")
+    raise SystemExit(1)
+    PY
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
