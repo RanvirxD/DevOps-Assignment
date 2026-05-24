@@ -19,13 +19,6 @@
 
 ---
 
-## Walkthrough Video
-
-Link:
-Length: under 5 minutes
-
----
-
 ## Sample Report
 
 `samples/report.example.json`
