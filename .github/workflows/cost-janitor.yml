@@ -16,53 +16,53 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-  localstack:
-    image: localstack/localstack:3.8.1
-    ports:
-      - 4566:4566
-    env:
-      SERVICES: ec2,s3
-      DEFAULT_REGION: us-east-1
-      DEBUG: 1
+      localstack:
+        image: localstack/localstack:3.8.1
+        ports:
+          - 4566:4566
+        env:
+          SERVICES: ec2,s3
+          DEFAULT_REGION: us-east-1
+          DEBUG: 1
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Wait for LocalStack
-  run: |
-    python - <<'PY'
-    import json
-    import time
-    import urllib.request
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
 
-    url = "http://localhost:4566/_localstack/health"
+          url = "http://localhost:4566/_localstack/health"
 
-    for attempt in range(1, 61):
-        try:
-            with urllib.request.urlopen(url, timeout=5) as response:
-                body = response.read().decode("utf-8")
-                print(body)
+          for attempt in range(1, 61):
+              try:
+                  with urllib.request.urlopen(url, timeout=5) as response:
+                      body = response.read().decode("utf-8")
+                      print(body)
 
-                if response.status == 200:
-                    data = json.loads(body)
-                    services = data.get("services", {})
+                      if response.status == 200:
+                          data = json.loads(body)
+                          services = data.get("services", {})
 
-                    ec2_status = services.get("ec2")
-                    s3_status = services.get("s3")
+                          ec2_status = services.get("ec2")
+                          s3_status = services.get("s3")
 
-                    if ec2_status in ("available", "running") and s3_status in ("available", "running"):
-                        print("LocalStack is ready")
-                        raise SystemExit(0)
+                          if ec2_status in ("available", "running") and s3_status in ("available", "running"):
+                              print("LocalStack is ready")
+                              raise SystemExit(0)
 
-        except Exception as error:
-            print(f"Waiting for LocalStack... attempt {attempt}/60: {error}")
+              except Exception as error:
+                  print(f"Waiting for LocalStack... attempt {attempt}/60: {error}")
 
-        time.sleep(2)
+              time.sleep(2)
 
-    print("LocalStack did not become ready in time")
-    raise SystemExit(1)
-    PY
+          print("LocalStack did not become ready in time")
+          raise SystemExit(1)
+          PY
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -98,10 +98,12 @@ jobs:
 
       - name: Run Cost Janitor dry-run
         id: janitor
-        continue-on-error: true
         run: |
+          set +e
           python janitor/janitor.py --dry-run --json-output report.json --md-output report.md
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          JANITOR_EXIT_CODE=$?
+          echo "exit_code=$JANITOR_EXIT_CODE" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Upload Cost Janitor reports
         uses: actions/upload-artifact@v4
@@ -119,7 +121,7 @@ jobs:
             const fs = require("fs");
             const summary = fs.readFileSync("report.md", "utf8");
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
